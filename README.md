@@ -1,4 +1,4 @@
-# sqlite-vector
+# sqlite-vectordb
 
 ```
 mkdir build
