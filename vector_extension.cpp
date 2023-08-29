@@ -3,12 +3,23 @@
 #include <vector>
 #include <cstring>
 #include <sstream>
+#include <iostream>
 
 #include "include/vec.hpp"
 #include "include/nanoflann.hpp"
 #include "include/pointcloud.hpp"
 
 SQLITE_EXTENSION_INIT1
+
+std::vector<std::string> split(std::string s, char delim) {
+    std::vector<std::string> result;
+    std::stringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, delim)) {
+        result.push_back(item);
+    }
+    return result;
+}
 
 // Convert SQLite value to Vector
 Vec sqlite3_value_to_vector(sqlite3_value *value)
@@ -102,39 +113,85 @@ extern "C"
         vector_to_sqlite3_result(v1, context);
     }
 
-    // void sqlite_vector_nearest_neighbor(sqlite3_context *context, int argc, sqlite3_value **argv)
-    // {
-    //     if (argc != 2 || sqlite3_value_type(argv[0]) != SQLITE_BLOB || sqlite3_value_type(argv[1]) != SQLITE3_TEXT)
-    //     {
-    //         sqlite3_result_error(context, "VECTOR_NN: Expects a BLOB vector and a table name.", -1);
-    //         return;
-    //     }
+    void sqlite_vector_nearest_neighbor(sqlite3_context *context, int argc, sqlite3_value **argv)
+    {
+        if (argc != 2 || sqlite3_value_type(argv[0]) != SQLITE_BLOB || sqlite3_value_type(argv[1]) != SQLITE3_TEXT)
+        {
+            sqlite3_result_error(context, "VECTOR_NN: Expects a BLOB vector and a table name.", -1);
+            return;
+        }
 
-    //     // Deserialize the input vector
-    //     std::vector<double> queryVec;
-    //     // TODO: Deserialize argv[0] into queryVec
+        // Deserialize the input vector
+        Vec queryVec = sqlite3_value_to_vector(argv[0]);
+        std::cout << "Done deserializing" << std::endl;
 
-    //     // Retrieve the table name
-    //     const char *tableName = reinterpret_cast<const char *>(sqlite3_value_text(argv[1]));
+        // Retrieve the table name
+        const char *tableColumnName = reinterpret_cast<const char *>(sqlite3_value_text(argv[1]));
+        std::vector<std::string> tableColumnNameSplit = split(tableColumnName, '.');
+        if (tableColumnNameSplit.size() != 2)
+        {
+            sqlite3_result_error(context, "VECTOR_NN: Expects a table name in the format 'table.column'.", -1);
+            return;
+        }
 
-    //     // TODO: Extract vectors from the specified table and populate PointCloud
+        std::string tableName = tableColumnNameSplit[0];
+        std::string columnName = tableColumnNameSplit[1];
 
-    //     PointCloud cloud;
-    //     // Assume the vectors in the table are 2D for simplicity; adjust as needed
-    //     // cloud.pts = ...;
+        std::string sql = "SELECT " + columnName + " FROM " + tableName + ";";
+        sqlite3_stmt *stmt;
 
-    //     nanoflann::KDTree index(2, cloud, nanoflann::KDTreeSingleIndexAdaptorParams(10 /* max leaf */));
-    //     index.buildIndex();
+        std::cout << "Sql is " << sql << std::endl;
 
-    //     double query_pt[2] = {queryVec[0], queryVec[1]};
-    //     const size_t num_results = 1;
-    //     size_t ret_index;
-    //     double out_dist_sqr;
-    //     index.knnSearch(&query_pt[0], num_results, &ret_index, &out_dist_sqr);
+        sqlite3 *db = sqlite3_context_db_handle(context);
+        std::cout << "Getting dataset" << std::endl;
 
-    //     // Return the index of the nearest neighbor
-    //     sqlite3_result_int(context, ret_index);
-    // }
+        if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, NULL) != SQLITE_OK)
+        {
+            sqlite3_result_error(context, "Failed to query table.", -1);
+            return;
+        }
+        std::cout << "Getting dataset size" << std::endl;
+
+        std::vector<Vec> dataset;
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            const double* row_data = reinterpret_cast<const double*>(sqlite3_column_blob(stmt, 0));
+            int row_size = sqlite3_column_bytes(stmt, 0);
+            Vec row_vec; 
+            row_vec.values = std::vector(row_data, row_data + row_size / sizeof(double));
+            dataset.push_back(row_vec);
+        }
+        std::cout << "Got dataset size " << dataset.size() << std::endl;
+
+        sqlite3_finalize(stmt);
+
+        // Build the KD-tree
+        typedef nanoflann::KDTreeSingleIndexAdaptor<
+            nanoflann::L2_Simple_Adaptor<double, PointCloud>,
+            PointCloud,
+            3 /* dim */
+            >
+            my_kd_tree_t;
+
+        PointCloud cloud;
+        cloud.pts = dataset;
+
+        my_kd_tree_t index(3 /*dim*/, cloud, nanoflann::KDTreeSingleIndexAdaptorParams(10 /* max leaf */) );
+        index.buildIndex();
+
+        // Find the nearest neighbor
+        size_t num_results = 1;
+        std::vector<size_t> ret_index(num_results);
+        std::vector<double> out_dist_sqr(num_results);
+
+        nanoflann::KNNResultSet<double> resultSet(num_results);
+        resultSet.init(&ret_index[0], &out_dist_sqr[0]);
+
+        index.findNeighbors(resultSet, &queryVec.values[0], nanoflann::SearchParameters(10));
+
+        // Return the result
+        vector_to_sqlite3_result(dataset[ret_index[0]], context);
+
+    }
 
 #ifdef _WIN32
     __declspec(dllexport)

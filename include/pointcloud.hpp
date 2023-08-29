@@ -1,5 +1,3 @@
-#include "vec.hpp"
-
 struct PointCloud {
     std::vector<Vec> pts;
 

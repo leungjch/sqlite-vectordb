@@ -152,7 +152,7 @@ CMakeFiles/vector_extension.dir/vector_extension.cpp.o: \
  /usr/include/c++/11/bits/basic_ios.tcc /usr/include/c++/11/ostream \
  /usr/include/c++/11/bits/ostream.tcc \
  /usr/include/c++/11/bits/istream.tcc \
- /usr/include/c++/11/bits/sstream.tcc \
+ /usr/include/c++/11/bits/sstream.tcc /usr/include/c++/11/iostream \
  /home/leungjch/Documents/repo/sqlite-vector/include/vec.hpp \
  /home/leungjch/Documents/repo/sqlite-vector/include/nanoflann.hpp \
  /usr/include/c++/11/algorithm /usr/include/c++/11/utility \
@@ -215,4 +215,5 @@ CMakeFiles/vector_extension.dir/vector_extension.cpp.o: \
  /usr/include/c++/11/ext/concurrence.h \
  /usr/include/c++/11/bits/atomic_futex.h \
  /usr/include/c++/11/bits/std_thread.h /usr/include/c++/11/unordered_set \
- /usr/include/c++/11/bits/unordered_set.h
+ /usr/include/c++/11/bits/unordered_set.h \
+ /home/leungjch/Documents/repo/sqlite-vector/include/pointcloud.hpp
